@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\EventResource;
 use App\Models\Event;
 use Illuminate\Http\Request;
 
@@ -13,7 +14,9 @@ class EventController extends Controller
      */
     public function index()
     {
-        return Event::all();
+        return EventResource::collection(
+            Event::with(['user','attendees'])->paginate(10)
+        );
     }
 
     /**
@@ -30,7 +33,10 @@ class EventController extends Controller
 
         $validated['user_id'] = 1;
         $event = Event::create($validated);
-        return $event;
+        if ($event) {
+            return response()->json(['message'=>'Event created successfully.', 'data' => new EventResource($event)], 201);
+        }
+        return response()->json(['message'=>'Unable to create event.'], 500);
     }
 
     /**
@@ -41,7 +47,13 @@ class EventController extends Controller
         $event = Event::find($id);
 
         if ($event != null)
-            return $event;
+        {
+            //return EventResource::collection(Event::with('user')->where('id', $id)->get());
+            $event->load('user');
+            $event->load('attendees');
+            //return new EventResource($event);
+            return response()->json(['message' => 'Event fetched successfully','data' => EventResource::make($event)], 200);
+        }
         else
             return response()->json(['message' => 'Event not found'], 404);
     }
@@ -49,28 +61,41 @@ class EventController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Event $event)
+    public function update(Request $request,$id)
     {
-        $event->update(
-            $request->validate([
-                'name' => 'sometimes|string|max:255',
-                'description' => 'nullable|string',
-                'start_time' => 'sometimes|date',
-                'end_time' => 'sometimes|date|after:start_time',
-            ])
-        );
-        return $event;
+        $event = Event::find($id);
+
+        if (!$event) {
+            return response()->json(['message' => 'Event not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'description' => 'nullable|string',
+            'start_time' => 'sometimes|date',
+            'end_time' => 'sometimes|date|after:start_time',
+        ]);
+
+        $event->update($validated);
+
+        return response()->json([
+            'message' => 'Event updated successfully',
+            'data' => new EventResource($event)
+        ], 200);
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Event $event)
+    public function destroy($id)
     {
-        $deleting = $event->delete();
-        return response($deleting, 204);
+        $event = Event::find($id);
+        if (!$event) {
+            return response()->json(['message' => 'Event not found'],
+            );
+        }
 
-
-        //return response()->json([$deleting]);
+        $event->delete();
+        return response()->json(['message' => 'Event deleted successfully'], 200);
     }
 }
